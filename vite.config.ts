@@ -22,35 +22,5 @@ export default defineConfig({
   build: {
     cssMinify: true,
     sourcemap: false,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes("node_modules")) {
-            if (id.includes("react-router-dom") || id.includes("@remix-run") || id.includes("react-router")) {
-              return "vendor-react-router";
-            }
-            if (id.includes("react-dom") || id.includes("react/")) {
-              return "vendor-react-dom";
-            }
-            if (id.includes("scheduler")) {
-              return "vendor-react-core";
-            }
-            if (id.includes("recharts") || id.includes("d3")) {
-              return "vendor-recharts";
-            }
-            if (id.includes("hls.js")) {
-              return "vendor-hls";
-            }
-            if (id.includes("lucide-react")) {
-              return "vendor-icons";
-            }
-            if (id.includes("stripe") || id.includes("@stripe")) {
-              return "vendor-stripe";
-            }
-            return "vendor-libs";
-          }
-        },
-      },
-    },
   },
 });
