@@ -26,11 +26,22 @@ const BROADCAST_ROOM = 'broadcast';
 function init(httpServer) {
   const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
     .split(',')
-    .map((o) => o.trim());
+    .map((o) => o.trim().replace(/\/$/, ''));
 
   io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        const normalizedOrigin = origin.replace(/\/$/, '');
+        if (
+          allowedOrigins.includes(normalizedOrigin) ||
+          allowedOrigins.includes('*') ||
+          process.env.NODE_ENV !== 'production'
+        ) {
+          return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'), false);
+      },
       methods: ['GET', 'POST'],
       credentials: true,
     },
