@@ -90,138 +90,141 @@ async function notifyGateway(type, id, status, extra = {}) {
   }
 }
 
+async function processTranscodingJob(name, data) {
+  if (name === 'transcode_movie') {
+    const { movieId, inputPath, outputName, title, slug, generateSubtitles: runSubtitles } = data;
+    const outputDir = path.join(HLS_DIR, outputName);
+
+    try {
+      // 1. Update status to processing
+      await Movie.update({ transcoding_status: 'processing' }, { where: { id: movieId } });
+      await notifyGateway('movie', movieId, 'processing');
+
+      // 2. Perform HLS Transcoding for each quality
+      fs.mkdirSync(outputDir, { recursive: true });
+      for (const quality of QUALITIES) {
+        logger.info(`[Transcoding Worker] Movie ${movieId} → ${quality.name}`);
+        await transcodeQuality(inputPath, path.join(outputDir, quality.name), quality);
+      }
+
+      // Write master playlist
+      fs.writeFileSync(path.join(outputDir, 'master.m3u8'), buildMasterPlaylist());
+      const hlsUrl = `/uploads/hls/${outputName}/master.m3u8`;
+
+      // 3. Subtitles & Audio Dubbing (optional)
+      let subtitleUrl = null;
+      let dubbedAudioUrl = null;
+
+      if (runSubtitles) {
+        try {
+          subtitleUrl = await generateSubtitles(inputPath, title, slug);
+          if (subtitleUrl) {
+            const absoluteVttPath = path.resolve(__dirname, '../../../', subtitleUrl.replace(/^\//, ''));
+            dubbedAudioUrl = await dubVideo(absoluteVttPath, slug);
+          }
+        } catch (subErr) {
+          logger.error('[Transcoding Worker] Movie subtitles/dubbing failed, proceeding without them', { movieId, error: subErr.message });
+        }
+      }
+
+      // Clean up raw upload (moved after subtitles/dubbing generation)
+      try {
+        if (fs.existsSync(inputPath)) {
+          fs.unlinkSync(inputPath);
+        }
+      } catch (unlinkErr) {
+        logger.warn('[Transcoding Worker] Failed to delete raw video upload file:', { path: inputPath, error: unlinkErr.message });
+      }
+
+      // 4. Update status to completed
+      const updateData = {
+        video_url: hlsUrl,
+        transcoding_status: 'completed',
+      };
+      if (subtitleUrl) updateData.subtitle_url = subtitleUrl;
+      if (dubbedAudioUrl) updateData.dubbed_audio_url = dubbedAudioUrl;
+
+      await Movie.update(updateData, { where: { id: movieId } });
+      await notifyGateway('movie', movieId, 'completed');
+      logger.info(`[Transcoding Worker] Movie ${movieId} transcoding completed successfully`);
+
+    } catch (err) {
+      logger.error(`[Transcoding Worker] Movie ${movieId} transcoding failed`, { error: err.message });
+      await Movie.update({ transcoding_status: 'failed' }, { where: { id: movieId } });
+      await notifyGateway('movie', movieId, 'failed', { error: err.message });
+      throw err;
+    }
+  } else if (name === 'transcode_episode') {
+    const { episodeId, inputPath, outputName, title, slug, generateSubtitles: runSubtitles } = data;
+    const outputDir = path.join(HLS_DIR, outputName);
+
+    try {
+      // 1. Update status to processing
+      await Episode.update({ transcoding_status: 'processing' }, { where: { id: episodeId } });
+      await notifyGateway('episode', episodeId, 'processing');
+
+      // 2. Perform HLS Transcoding for each quality
+      fs.mkdirSync(outputDir, { recursive: true });
+      for (const quality of QUALITIES) {
+        logger.info(`[Transcoding Worker] Episode ${episodeId} → ${quality.name}`);
+        await transcodeQuality(inputPath, path.join(outputDir, quality.name), quality);
+      }
+
+      // Write master playlist
+      fs.writeFileSync(path.join(outputDir, 'master.m3u8'), buildMasterPlaylist());
+      const hlsUrl = `/uploads/hls/${outputName}/master.m3u8`;
+
+      // 3. Subtitles & Audio Dubbing
+      let subtitleUrl = null;
+      let dubbedAudioUrl = null;
+
+      if (runSubtitles) {
+        try {
+          subtitleUrl = await generateSubtitles(inputPath, title, slug);
+          if (subtitleUrl) {
+            const absoluteVttPath = path.resolve(__dirname, '../../../', subtitleUrl.replace(/^\//, ''));
+            dubbedAudioUrl = await dubVideo(absoluteVttPath, slug);
+          }
+        } catch (subErr) {
+          logger.error('[Transcoding Worker] Episode subtitles/dubbing failed, proceeding without them', { episodeId, error: subErr.message });
+        }
+      }
+
+      // Clean up raw upload (moved after subtitles/dubbing generation)
+      try {
+        if (fs.existsSync(inputPath)) {
+          fs.unlinkSync(inputPath);
+        }
+      } catch (unlinkErr) {
+        logger.warn('[Transcoding Worker] Failed to delete raw video upload file:', { path: inputPath, error: unlinkErr.message });
+      }
+
+      // 4. Update status to completed
+      const updateData = {
+        video_url: hlsUrl,
+        transcoding_status: 'completed',
+      };
+      if (subtitleUrl) updateData.subtitle_url = subtitleUrl;
+      if (dubbedAudioUrl) updateData.dubbed_audio_url = dubbedAudioUrl;
+
+      await Episode.update(updateData, { where: { id: episodeId } });
+      await notifyGateway('episode', episodeId, 'completed');
+      logger.info(`[Transcoding Worker] Episode ${episodeId} transcoding completed successfully`);
+
+    } catch (err) {
+      logger.error(`[Transcoding Worker] Episode ${episodeId} transcoding failed`, { error: err.message });
+      await Episode.update({ transcoding_status: 'failed' }, { where: { id: episodeId } });
+      await notifyGateway('episode', episodeId, 'failed', { error: err.message });
+      throw err;
+    }
+  }
+}
+
 function initTranscodingWorker(redisConnection) {
   const worker = new Worker('transcoding', async (job) => {
     const { name, data } = job;
     logger.info(`[Transcoding Worker] Starting job ${job.id}: ${name}`);
-
-    if (name === 'transcode_movie') {
-      const { movieId, inputPath, outputName, title, slug, generateSubtitles: runSubtitles } = data;
-      const outputDir = path.join(HLS_DIR, outputName);
-
-      try {
-        // 1. Update status to processing
-        await Movie.update({ transcoding_status: 'processing' }, { where: { id: movieId } });
-        await notifyGateway('movie', movieId, 'processing');
-
-        // 2. Perform HLS Transcoding for each quality
-        fs.mkdirSync(outputDir, { recursive: true });
-        for (const quality of QUALITIES) {
-          logger.info(`[Transcoding Worker] Movie ${movieId} → ${quality.name}`);
-          await transcodeQuality(inputPath, path.join(outputDir, quality.name), quality);
-        }
-
-        // Write master playlist
-        fs.writeFileSync(path.join(outputDir, 'master.m3u8'), buildMasterPlaylist());
-        const hlsUrl = `/uploads/hls/${outputName}/master.m3u8`;
-
-        // 3. Subtitles & Audio Dubbing (optional)
-        let subtitleUrl = null;
-        let dubbedAudioUrl = null;
-
-        if (runSubtitles) {
-          try {
-            subtitleUrl = await generateSubtitles(inputPath, title, slug);
-            if (subtitleUrl) {
-              const absoluteVttPath = path.resolve(__dirname, '../../../', subtitleUrl.replace(/^\//, ''));
-              dubbedAudioUrl = await dubVideo(absoluteVttPath, slug);
-            }
-          } catch (subErr) {
-            logger.error('[Transcoding Worker] Movie subtitles/dubbing failed, proceeding without them', { movieId, error: subErr.message });
-          }
-        }
-
-        // Clean up raw upload (moved after subtitles/dubbing generation)
-        try {
-          if (fs.existsSync(inputPath)) {
-            fs.unlinkSync(inputPath);
-          }
-        } catch (unlinkErr) {
-          logger.warn('[Transcoding Worker] Failed to delete raw video upload file:', { path: inputPath, error: unlinkErr.message });
-        }
-
-        // 4. Update status to completed
-        const updateData = {
-          video_url: hlsUrl,
-          transcoding_status: 'completed',
-        };
-        if (subtitleUrl) updateData.subtitle_url = subtitleUrl;
-        if (dubbedAudioUrl) updateData.dubbed_audio_url = dubbedAudioUrl;
-
-        await Movie.update(updateData, { where: { id: movieId } });
-        await notifyGateway('movie', movieId, 'completed');
-        logger.info(`[Transcoding Worker] Movie ${movieId} transcoding completed successfully`);
-
-      } catch (err) {
-        logger.error(`[Transcoding Worker] Movie ${movieId} transcoding failed`, { error: err.message });
-        await Movie.update({ transcoding_status: 'failed' }, { where: { id: movieId } });
-        await notifyGateway('movie', movieId, 'failed', { error: err.message });
-        throw err;
-      }
-    } else if (name === 'transcode_episode') {
-      const { episodeId, inputPath, outputName, title, slug, generateSubtitles: runSubtitles } = data;
-      const outputDir = path.join(HLS_DIR, outputName);
-
-      try {
-        // 1. Update status to processing
-        await Episode.update({ transcoding_status: 'processing' }, { where: { id: episodeId } });
-        await notifyGateway('episode', episodeId, 'processing');
-
-        // 2. Perform HLS Transcoding for each quality
-        fs.mkdirSync(outputDir, { recursive: true });
-        for (const quality of QUALITIES) {
-          logger.info(`[Transcoding Worker] Episode ${episodeId} → ${quality.name}`);
-          await transcodeQuality(inputPath, path.join(outputDir, quality.name), quality);
-        }
-
-        // Write master playlist
-        fs.writeFileSync(path.join(outputDir, 'master.m3u8'), buildMasterPlaylist());
-        const hlsUrl = `/uploads/hls/${outputName}/master.m3u8`;
-
-        // 3. Subtitles & Audio Dubbing
-        let subtitleUrl = null;
-        let dubbedAudioUrl = null;
-
-        if (runSubtitles) {
-          try {
-            subtitleUrl = await generateSubtitles(inputPath, title, slug);
-            if (subtitleUrl) {
-              const absoluteVttPath = path.resolve(__dirname, '../../../', subtitleUrl.replace(/^\//, ''));
-              dubbedAudioUrl = await dubVideo(absoluteVttPath, slug);
-            }
-          } catch (subErr) {
-            logger.error('[Transcoding Worker] Episode subtitles/dubbing failed, proceeding without them', { episodeId, error: subErr.message });
-          }
-        }
-
-        // Clean up raw upload (moved after subtitles/dubbing generation)
-        try {
-          if (fs.existsSync(inputPath)) {
-            fs.unlinkSync(inputPath);
-          }
-        } catch (unlinkErr) {
-          logger.warn('[Transcoding Worker] Failed to delete raw video upload file:', { path: inputPath, error: unlinkErr.message });
-        }
-
-        // 4. Update status to completed
-        const updateData = {
-          video_url: hlsUrl,
-          transcoding_status: 'completed',
-        };
-        if (subtitleUrl) updateData.subtitle_url = subtitleUrl;
-        if (dubbedAudioUrl) updateData.dubbed_audio_url = dubbedAudioUrl;
-
-        await Episode.update(updateData, { where: { id: episodeId } });
-        await notifyGateway('episode', episodeId, 'completed');
-        logger.info(`[Transcoding Worker] Episode ${episodeId} transcoding completed successfully`);
-
-      } catch (err) {
-        logger.error(`[Transcoding Worker] Episode ${episodeId} transcoding failed`, { error: err.message });
-        await Episode.update({ transcoding_status: 'failed' }, { where: { id: episodeId } });
-        await notifyGateway('episode', episodeId, 'failed', { error: err.message });
-        throw err;
-      }
-    }
+    return processTranscodingJob(name, data);
   }, {
     connection: redisConnection,
     concurrency: 1, // process one video transcode at a time to prevent CPU overload
@@ -231,7 +234,11 @@ function initTranscodingWorker(redisConnection) {
     logger.error(`[Transcoding Worker] Job ${job.id} failed`, { error: err.message });
   });
 
+  worker.on('error', (err) => {
+    logger.error('[Transcoding Worker] BullMQ worker connection error:', { error: err.message });
+  });
+
   return worker;
 }
 
-module.exports = { initTranscodingWorker };
+module.exports = { initTranscodingWorker, processTranscodingJob };

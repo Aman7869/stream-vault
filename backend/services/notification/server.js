@@ -26,6 +26,16 @@ app.get('/health', async (req, res) => {
 
 const startService = async () => {
   try {
+    const redisDisabled = process.env.DISABLE_REDIS === 'true' || process.env.REDIS_HOST === 'none';
+
+    if (redisDisabled) {
+      logger.info('[Notification Service] Redis is disabled (DISABLE_REDIS=true). Worker not initialized.');
+      app.listen(PORT, () => {
+        logger.info(`[Notification Service] Health server running on http://localhost:${PORT}`);
+      });
+      return;
+    }
+
     // Establish Redis Connection
     const redisConnection = new IORedis({
       host: REDIS_HOST,

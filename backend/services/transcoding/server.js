@@ -42,6 +42,16 @@ const startService = async () => {
     await sequelize.authenticate();
     logger.info('[Transcoding Service] Database connection established successfully');
 
+    const redisDisabled = process.env.DISABLE_REDIS === 'true' || process.env.REDIS_HOST === 'none';
+
+    if (redisDisabled) {
+      logger.info('[Transcoding Service] Redis is disabled (DISABLE_REDIS=true). Worker not initialized.');
+      app.listen(PORT, () => {
+        logger.info(`[Transcoding Service] Health server running on http://localhost:${PORT}`);
+      });
+      return;
+    }
+
     // 2. Establish Redis Connection
     const redisConnection = new IORedis({
       host: REDIS_HOST,
