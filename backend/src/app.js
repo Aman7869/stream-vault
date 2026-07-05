@@ -36,6 +36,7 @@ app.use(cors({
     if (
       allowedOrigins.includes(normalizedOrigin) ||
       allowedOrigins.includes('*') ||
+      normalizedOrigin.endsWith('.onrender.com') ||
       process.env.NODE_ENV !== 'production'
     ) {
       return callback(null, true);
