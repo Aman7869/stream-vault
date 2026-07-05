@@ -62,3 +62,10 @@ npm run logs:services
 4. Stop Services
 npm run stop:services
 
+
+mysql deploy on TiDB
+project deploy on render.com
+
+frontend url = https://stream-vault-frontend.onrender.com
+backendurl = https://stream-vault-api.onrender.com/
+

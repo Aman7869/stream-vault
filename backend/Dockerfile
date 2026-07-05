@@ -1,36 +1,25 @@
-# Base stage
-FROM node:18-alpine AS base
-WORKDIR /app
+FROM node:20-alpine
 
-# Install system dependencies for native builds and ffmpeg package (transcoding stage requires it)
+# Install system packages required by your application
 RUN apk add --no-cache python3 make g++ ffmpeg
 
-# Copy package settings
+# Create app directory
+WORKDIR /app
+
+# Copy package files
 COPY package*.json ./
-RUN npm ci --only=production
 
-# --- API Gateway Target ---
-FROM base AS gateway
-COPY src ./src
+# Install dependencies
+RUN npm install
+
+# Copy application source
+COPY . .
+
+# Production environment
+ENV NODE_ENV=production
+
+# Render provides the PORT environment variable
 EXPOSE 5000
-CMD ["npm", "start"]
 
-# --- Transcoder Target ---
-FROM base AS transcoder
-WORKDIR /app
-COPY services/transcoding ./services/transcoding
-COPY src ./src
-WORKDIR /app/services/transcoding
-RUN npm ci --only=production
-EXPOSE 5001
-CMD ["npm", "start"]
-
-# --- Notifier Target ---
-FROM base AS notifier
-WORKDIR /app
-COPY services/notification ./services/notification
-COPY src ./src
-WORKDIR /app/services/notification
-RUN npm ci --only=production
-EXPOSE 5002
+# Start the application
 CMD ["npm", "start"]
