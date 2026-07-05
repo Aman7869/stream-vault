@@ -228,6 +228,9 @@ class AuthController {
       logger.error("AuthController.updateProfile error", {
         error: err.message,
       });
+      if (err.statusCode) {
+        return errorResponse(res, err.message, err.statusCode);
+      }
       return errorResponse(
         res,
         MESSAGES.INTERNAL_ERROR,

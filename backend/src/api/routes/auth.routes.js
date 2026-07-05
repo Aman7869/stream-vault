@@ -12,6 +12,7 @@ const {
   validateUpdateProfile,
 } = require('../validators/auth.validator');
 
+console.log('Auth routes initialized');
 // Public routes (with auth rate limiting)
 router.post('/register', authLimiter, validateRegister, AuthController.register.bind(AuthController));
 router.post('/login', authLimiter, validateLogin, AuthController.login.bind(AuthController));

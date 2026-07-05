@@ -4,10 +4,10 @@ const { Sequelize } = require('sequelize');
 const config = {
   development: {
     username: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || 'root',
+    password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'root',
     database: process.env.DB_NAME || 'streamvault',
     host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT, 10) || 3306,
+    port: parseInt(process.env.DB_PORT, 10) || 4000,
     dialect: 'mysql',
     logging: false,
     pool: {
@@ -56,7 +56,21 @@ const config = {
 };
 
 const env = process.env.NODE_ENV || 'development';
+
+// Enable secure connections for TiDB Cloud serverless or when requested via DB_SSL env var
+for (const key in config) {
+  if (config[key].host && (config[key].host.includes('tidbcloud.com') || process.env.DB_SSL === 'true')) {
+    config[key].dialectOptions = {
+      ssl: {
+        minVersion: 'TLSv1.2',
+        rejectUnauthorized: true,
+      },
+    };
+  }
+}
+
 const dbConfig = config[env];
+console.log('dbConfig: ', dbConfig);
 
 const sequelize = new Sequelize(
   dbConfig.database,

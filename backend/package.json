@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
+    "pm2": "^7.0.3",
     "sequelize-cli": "^6.6.2"
   },
   "engines": {

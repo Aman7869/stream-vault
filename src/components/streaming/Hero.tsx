@@ -166,7 +166,22 @@ function BgVideo({ src, poster, muted }: BgVideoProps) {
     if (videoRef.current) videoRef.current.muted = muted;
   }, [muted]);
 
-  if (type === "none" || type === "youtube") return null;
+  if (type === "none") return null;
+
+  if (type === "youtube") {
+    const ytId = extractYouTubeId(src);
+    if (!ytId) return null;
+    return (
+      <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+        <iframe
+          src={`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=${muted ? 1 : 0}&loop=1&playlist=${ytId}&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1`}
+          className="absolute inset-0 w-[120%] h-[120%] -top-[10%] -left-[10%] object-cover"
+          style={{ border: "none", pointerEvents: "none" }}
+          allow="autoplay; encrypted-media"
+        />
+      </div>
+    );
+  }
 
   return (
     <video
@@ -379,8 +394,7 @@ export function Hero() {
   const effectiveVideoUrl = resolvedVideoUrl;
   const hasVideo =
     !!effectiveVideoUrl &&
-    videoType(effectiveVideoUrl) !== "none" &&
-    videoType(effectiveVideoUrl) !== "youtube";
+    videoType(effectiveVideoUrl) !== "none";
 
   if (!current) {
     return (

@@ -325,9 +325,42 @@ class AuthService {
   async updateProfile(userId, data) {
     console.log('data: ', data);
     console.log('userId: ', userId);
-    // Hash password
-    const hashed = await bcrypt.hash(data.password, 12);
-    await UserRepository.updateById(userId, { ...data, password: hashed });
+
+    const updateData = { ...data };
+
+    // Hash password if a new password is provided
+    if (data.password) {
+      const user = await UserRepository.findByIdWithPassword(userId);
+      if (!user) {
+        const err = new Error('User not found');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      // If user has a password, verify the current password first
+      if (user.password) {
+        if (!data.current_password) {
+          const err = new Error('Current password is required to set a new password');
+          err.statusCode = 400;
+          throw err;
+        }
+        const isMatch = await bcrypt.compare(data.current_password, user.password);
+        if (!isMatch) {
+          const err = new Error('Incorrect current password');
+          err.statusCode = 400;
+          throw err;
+        }
+      }
+
+      updateData.password = await bcrypt.hash(data.password, 12);
+    } else {
+      delete updateData.password;
+    }
+
+    // current_password is not a database column, so delete it before the repository update
+    delete updateData.current_password;
+
+    await UserRepository.updateById(userId, updateData);
     return UserRepository.findById(userId);
   }
 

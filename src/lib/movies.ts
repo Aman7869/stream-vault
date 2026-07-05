@@ -2,6 +2,26 @@ import { apiClient, assetUrl } from "@/services/api";
 import type { Title } from "@/lib/mock-data";
 import type { BackendMovie } from "@/store/slices/moviesSlice";
 
+export function resolveBunnyHlsUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.includes("/playlist.m3u8")) return url;
+  
+  if (url.includes("mediadelivery.net/embed/")) {
+    try {
+      const parsedUrl = new URL(url);
+      const pathParts = parsedUrl.pathname.split('/'); // ["", "embed", "libraryId", "videoId"]
+      const videoId = pathParts[3];
+      if (videoId) {
+        const queryParams = parsedUrl.search;
+        return `https://vz-8fee5f3f-6e6.b-cdn.net/${videoId}/playlist.m3u8${queryParams}`;
+      }
+    } catch (e) {
+      console.error("Error parsing Bunny embed URL:", e);
+    }
+  }
+  return url;
+}
+
 export function mapMovieToTitle(movie: BackendMovie): Title {
   const year = movie.release_date
     ? new Date(movie.release_date).getFullYear()
@@ -66,7 +86,7 @@ export function mapMovieToTitle(movie: BackendMovie): Title {
     backdropUrl: backdrop,
     director: "",
     cast: [],
-    hlsUrl: movie.video_url ? assetUrl(movie.video_url) : "",
+    hlsUrl: movie.video_url ? resolveBunnyHlsUrl(assetUrl(movie.video_url)) : "",
     language: movie.language ?? "English",
     transcoding_status: movie.transcoding_status ?? null,
     content_rating: movie.content_rating ?? null,

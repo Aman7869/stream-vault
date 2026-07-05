@@ -23,3 +23,4 @@ pnpm-lock.yaml
 .nuxt/
 .turbo/
 *.log
+agy_error
